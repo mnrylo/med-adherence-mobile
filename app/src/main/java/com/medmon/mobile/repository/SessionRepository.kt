@@ -14,6 +14,11 @@ import com.medmon.mobile.network.SessionApi
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 
+import android.content.Context
+import com.medmon.mobile.ml.GestureClassifierTflite
+import com.medmon.mobile.util.CsvLogger
+
+
 
 object SessionRepository {
 
@@ -21,11 +26,27 @@ object SessionRepository {
     // - Emulador Android Studio falando com FastAPI rodando no host: http://10.0.2.2:8000
     // - Dispositivo físico na mesma rede: ex. http://192.168.0.10:8000
     private const val BASE_URL = "http://192.168.0.244:8000"
-
-    // Valores fixos por enquanto (podemos puxar do backend depois)
     private const val PATIENT_ID = "P001"
     private const val PHONE_ID = "PHONE_GALAXY_S23"
     private const val MODEL_VERSION = "tflite_v1.0"
+
+    private var classifier: GestureClassifierTflite? = null
+    private var csvLogger: CsvLogger? = null
+
+
+    fun initClassifier(context: Context) {
+        if (classifier != null) return
+
+        try {
+            classifier = GestureClassifierTflite(context.applicationContext)
+        } catch (e: IllegalStateException) {
+            Log.e("SessionRepository", "Error initializing TFLite classifier: ${e.message}", e)
+            classifier = null
+        } catch (e: Exception) {
+            Log.e("SessionRepository", "Unexpected error initializing classifier: ${e.message}", e)
+            classifier = null
+        }
+    }
 
     private val retrofit: Retrofit by lazy {
         Retrofit.Builder()
@@ -43,9 +64,12 @@ object SessionRepository {
 
     private val isoFormatter = DateTimeFormatter.ISO_INSTANT
 
-    fun startSession() {
+    fun startSession(context: Context) {
         val newSessionId = generateSessionId()
         val now = Instant.now().toString()
+
+        csvLogger = CsvLogger(context)
+        csvLogger?.startNewFile(newSessionId)
 
         _state.value = SessionState(
             isSessionActive = true,
@@ -95,6 +119,10 @@ object SessionRepository {
     suspend fun stopSessionAndSend() {
         val current = _state.value
         if (!current.isSessionActive) {
+
+            csvLogger?.close()
+            csvLogger = null
+
             Log.d("SessionRepository", "No active session to stop.")
             return
         }
@@ -172,8 +200,28 @@ object SessionRepository {
             return
         }
 
+        window.data.forEach { row ->
+            val accX = row[0]
+            val accY = row[1]
+            val accZ = row[2]
+            val gyrX = row[3]
+            val gyrY = row[4]
+            val gyrZ = row[5]
+
+            csvLogger?.appendRow(
+                timestamp = window.timestamp,
+                accX = accX,
+                accY = accY,
+                accZ = accZ,
+                gyrX = gyrX,
+                gyrY = gyrY,
+                gyrZ = gyrZ
+            )
+        }
+
         // Classificação fake: escolhe um label qualquer e uma confidence aleatória
-        val (label, confidence) = fakeClassify(window)
+//        val (label, confidence) = fakeClassify(window)
+        val (label, confidence) = classifyGesture(window)
 
         val gesture = GestureEventPayload(
             timestamp = window.timestamp,
@@ -191,10 +239,33 @@ object SessionRepository {
         Log.d("SessionRepository", "Gesture added: $gesture")
     }
 
-    private fun fakeClassify(window: ImuWindow): Pair<String, Float> {
+//    private fun fakeClassify(window: ImuWindow): Pair<String, Float> {
+//        val labels = listOf("G1", "G2", "G3", "G4", "G5", "T")
+//        val label = labels.random()
+//        val confidence = Random.nextDouble(0.5, 1.0).toFloat()
+//        return label to confidence
+//    }
+
+    private fun classifyGesture(window: ImuWindow): Pair<String, Float> {
+        return try {
+            val cls = classifier
+            if (cls != null) {
+                cls.classify(window)
+            } else {
+                // Fallback se por algum motivo não foi inicializado
+                Log.w("SessionRepository", "Classifier not initialized, using fallback.")
+                fallbackClassify(window)
+            }
+        } catch (e: Exception) {
+            Log.e("SessionRepository", "Error running TFLite: ${e.message}", e)
+            fallbackClassify(window)
+        }
+    }
+
+    private fun fallbackClassify(window: ImuWindow): Pair<String, Float> {
         val labels = listOf("G1", "G2", "G3", "G4", "G5", "T")
         val label = labels.random()
-        val confidence = Random.nextDouble(0.5, 1.0).toFloat()
+        val confidence = kotlin.random.Random.nextDouble(0.5, 1.0).toFloat()
         return label to confidence
     }
 

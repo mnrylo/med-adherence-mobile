@@ -8,6 +8,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.medmon.mobile.model.GestureEventPayload
 import com.medmon.mobile.viewmodel.SessionViewModel
@@ -17,10 +18,12 @@ import com.medmon.mobile.viewmodel.SessionViewModel
 fun MainScreen(sessionViewModel: SessionViewModel = viewModel()) {
 
     val uiState by sessionViewModel.uiState.collectAsState()
+    val context = LocalContext.current
 
     // Por enquanto, vamos deixar conexão do relógio e backend fixas:
     val connectionWatch = "Unknown"
     val connectionBackend = "Offline"
+
 
     Scaffold(
         topBar = {
@@ -46,7 +49,7 @@ fun MainScreen(sessionViewModel: SessionViewModel = viewModel()) {
             SessionSection(
                 isSessionActive = uiState.isSessionActive,
                 sessionId = uiState.sessionId,
-                onStart = { sessionViewModel.startSession() },
+                onStart = { sessionViewModel.startSession(context) },
                 onStop = { sessionViewModel.stopSession() },
                 onTestSend = { sessionViewModel.sendTestGestureSession() }
             )
@@ -96,6 +99,7 @@ fun SessionSection(
     onStop: () -> Unit,
     onTestSend: () -> Unit
 ) {
+
     Column {
         Text("Session", style = MaterialTheme.typography.titleMedium)
         Spacer(modifier = Modifier.height(4.dp))

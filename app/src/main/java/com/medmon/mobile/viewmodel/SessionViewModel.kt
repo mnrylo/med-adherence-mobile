@@ -1,7 +1,11 @@
 package com.medmon.mobile.viewmodel
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import android.content.Context
+import androidx.lifecycle.ViewModel // Mude a importação de ViewModel para AndroidViewModel
 import androidx.lifecycle.viewModelScope
+//import androidx.lifecycle.ViewModel
+
 import com.medmon.mobile.model.GestureEventPayload
 import com.medmon.mobile.repository.SessionRepository
 import com.medmon.mobile.repository.SessionState
@@ -29,8 +33,8 @@ class SessionViewModel : ViewModel() {
         }
     }
 
-    fun startSession() {
-        SessionRepository.startSession()
+    fun startSession(context: Context) {
+        SessionRepository.startSession(context)
     }
 
     fun stopSession() {
